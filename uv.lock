@@ -164,6 +164,7 @@ name = "msu-miniseed"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "matplotlib" },
     { name = "pandas" },
 ]
 
@@ -171,16 +172,16 @@ dependencies = [
 dev = [
     { name = "pytest" },
 ]
-plot = [
-    { name = "matplotlib" },
-]
 
 [package.metadata]
-requires-dist = [{ name = "pandas", specifier = ">=2,<3" }]
+requires-dist = [
+    { name = "matplotlib", specifier = ">=3.10.8" },
+    { name = "pandas", specifier = ">=2,<3" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.0.2" }]
-plot = [{ name = "matplotlib", specifier = ">=3.10.8" }]
+plot = []
 
 [[package]]
 name = "numpy"
