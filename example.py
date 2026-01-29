@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 from msu_miniseed import read_miniseed
 
+
 def main() -> None:
     matplotlib.use("Agg")
     base = Path("input")
@@ -22,7 +23,7 @@ def main() -> None:
 
     for path in paths:
         parsed = read_miniseed(path)
-        df = parsed.dataframe
+        df = parsed.df
         print(f"{path}:")
         print(f"  records: {parsed.number_of_records}")
         print(f"  samples: {len(df)}")
@@ -43,16 +44,26 @@ def main() -> None:
             out_png.parent.mkdir(parents=True, exist_ok=True)
             out_csv.parent.mkdir(parents=True, exist_ok=True)
 
-
             span_seconds = 0.0
             if len(df) > 1:
-                span_seconds = (df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]).total_seconds()
+                span_seconds = (
+                    df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+                ).total_seconds()
 
             fig, ax = plt.subplots(figsize=(12, 4), dpi=150)
             ax.plot(df["timestamp"], df["sample"], color="black", linewidth=0.6)
-            ax.axhline(min_val, color="tab:blue", linestyle="--", label=f"min={min_val:.6g}")
-            ax.axhline(max_val, color="tab:red", linestyle="--", label=f"max={max_val:.6g}")
-            ax.axhline(mean_val, color="tab:green", linestyle="--", label=f"mean={mean_val:.6g}")
+            ax.axhline(
+                min_val, color="tab:blue", linestyle="--", label=f"min={min_val:.6g}"
+            )
+            ax.axhline(
+                max_val, color="tab:red", linestyle="--", label=f"max={max_val:.6g}"
+            )
+            ax.axhline(
+                mean_val,
+                color="tab:green",
+                linestyle="--",
+                label=f"mean={mean_val:.6g}",
+            )
             ax.axhline(
                 median_val,
                 color="tab:purple",

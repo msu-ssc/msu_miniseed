@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 import datetime as dt
 import json
 from pathlib import Path
@@ -17,19 +18,78 @@ HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 
 @dataclass(slots=True)
-class MiniseedData:
+class MiniseedRecord:
+    """Single miniSEED record with metadata and decoded samples."""
+
+    record_index: int
+    source_id: str
+    start_timestamp: pd.Timestamp | None
+    sample_rate: float
+    encoding: int
+    samples: list[int | float]
+    timestamps: list[pd.Timestamp] | None = None
+    extra_headers: str | None = None
+
+    def compatible_with(self, other: "MiniseedRecord") -> bool:
+        """Return True when the core record metadata matches another record."""
+        if not isinstance(other, MiniseedRecord):
+            return False
+        return (
+            self.source_id == other.source_id
+            and self.sample_rate == other.sample_rate
+            and self.encoding == other.encoding
+        )
+
+
+@dataclass(slots=True)
+class MiniseedData(Sequence[MiniseedRecord]):
     """Container for miniSEED records and metadata."""
 
-    first_timestamp: pd.Timestamp | None
-    last_timestamp: pd.Timestamp | None
-    number_of_records: int
-    dataframe: pd.DataFrame
+    records: list[MiniseedRecord] = field(default_factory=list)
     json_records: list[dict[str, object]] | None = None
+    _dataframe: pd.DataFrame | None = field(default=None, init=False, repr=False)
+
+    @property
+    def df(self) -> pd.DataFrame:
+        """Create a DataFrame for every sample in all the records."""
+        if self._dataframe is None:
+            self._dataframe = _records_to_dataframe(self.records)
+        return self._dataframe
+
+    @property
+    def number_of_records(self) -> int:
+        """Return the number of records."""
+        return len(self.records)
+
+    @property
+    def first_timestamp(self) -> pd.Timestamp | None:
+        """Return the first timestamp across all records."""
+        if self.df.empty:
+            return None
+        return self.df["timestamp"].iloc[0]
+
+    @property
+    def last_timestamp(self) -> pd.Timestamp | None:
+        """Return the last timestamp across all records."""
+        if self.df.empty:
+            return None
+        return self.df["timestamp"].iloc[-1]
+
+    def number_of_samples(self) -> int:
+        """Return the total number of samples across all records."""
+        return sum(len(record.samples) for record in self.records)
+
+    def all_compatible(self) -> bool:
+        """Return True if all records share core metadata."""
+        if not self.records:
+            return True
+        first = self.records[0]
+        return all(first.compatible_with(record) for record in self.records[1:])
 
     def to_csv(self, path: Path | str) -> None:
         """Write the dataframe to a CSV file."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.dataframe.to_csv(path, index=False, float_format="%.17g")
+        self.df.to_csv(path, index=False, float_format="%.17g")
 
     def to_json(self, path: Path | str) -> None:
         """Write JSON records using standard json.dumps indentation."""
@@ -40,11 +100,12 @@ class MiniseedData:
 
     def to_miniseed(self, path: Path | str) -> None:
         """Serialize the dataframe to miniSEED 3 binary format."""
-        if self.dataframe.empty:
+        df = self.df
+        if df.empty:
             Path(path).write_bytes(b"")
             return
 
-        df = self.dataframe.copy()
+        df = df.copy()
         if "timestamp" not in df.columns or "sample" not in df.columns:
             raise ValueError("dataframe must contain timestamp and sample columns")
 
@@ -61,9 +122,13 @@ class MiniseedData:
                 if "sample_index" in group.columns
                 else group
             )
-            source_id = str(group["source_id"].iloc[0]) if "source_id" in group.columns else ""
+            source_id = (
+                str(group["source_id"].iloc[0]) if "source_id" in group.columns else ""
+            )
             sample_rate = _infer_sample_rate(group)
-            encoding = int(group["encoding"].iloc[0]) if "encoding" in group.columns else 3
+            encoding = (
+                int(group["encoding"].iloc[0]) if "encoding" in group.columns else 3
+            )
             if "encoding" in group.columns and (group["encoding"].nunique() > 1):
                 raise ValueError(f"Multiple encodings in record {record_index}")
             samples, payload = _encode_payload(encoding, group["sample"])
@@ -105,26 +170,50 @@ class MiniseedData:
         path.write_bytes(b"".join(parts))
 
     def __len__(self) -> int:
-        """Return the number of samples in the dataframe."""
-        return len(self.dataframe)
+        """Return the number of records."""
+        return len(self.records)
+
+    def __getitem__(self, index: int) -> MiniseedRecord:
+        """Return the record at the given index."""
+        return self.records[index]
 
 
 def read_miniseed(path: str | Path) -> MiniseedData:
     """Read a miniSEED 3 binary file into a MiniseedData container."""
     data = Path(path).read_bytes()
-    frames: list[pd.DataFrame] = []
+    records: list[MiniseedRecord] = []
     record_index = 0
     offset = 0
 
     while offset + HEADER_SIZE <= len(data):
         header = data[offset : offset + HEADER_SIZE]
-        indicator, version, flags, nanosec, year, doy, hour, minute, second, encoding, sample_rate, nsamples, crc, pubver, id_len, extra_len, payload_len = struct.unpack(
-            HEADER_FMT, header
-        )
+        (
+            indicator,
+            version,
+            flags,
+            nanosec,
+            year,
+            doy,
+            hour,
+            minute,
+            second,
+            encoding,
+            sample_rate,
+            nsamples,
+            crc,
+            pubver,
+            id_len,
+            extra_len,
+            payload_len,
+        ) = struct.unpack(HEADER_FMT, header)
         if indicator != b"MS":
-            raise ValueError(f"Invalid record indicator at offset {offset}: {indicator!r}")
+            raise ValueError(
+                f"Invalid record indicator at offset {offset}: {indicator!r}"
+            )
         if version != 3:
-            raise ValueError(f"Unsupported miniSEED version {version} at offset {offset}")
+            raise ValueError(
+                f"Unsupported miniSEED version {version} at offset {offset}"
+            )
 
         record_len = HEADER_SIZE + id_len + extra_len + payload_len
         if offset + record_len > len(data):
@@ -153,22 +242,20 @@ def read_miniseed(path: str | Path) -> MiniseedData:
             raise ValueError("Sample rate is zero but samples are present")
 
         start_ts = _build_start_timestamp(year, doy, hour, minute, second, nanosec)
-        timestamps = _build_timestamps(start_ts, sample_rate, len(samples))
-
-        frame = pd.DataFrame(
-            {
-                "timestamp": timestamps,
-                "sample": samples,
-                "source_id": source_id,
-                "record_index": record_index,
-                "sample_index": np.arange(len(samples), dtype="int64"),
-                "sample_rate": sample_rate,
-                "encoding": encoding,
-            }
+        extra_headers_text = (
+            json.dumps(extra_headers) if extra_headers is not None else None
         )
-        if extra_headers is not None:
-            frame["extra_headers"] = json.dumps(extra_headers)
-        frames.append(frame)
+        records.append(
+            MiniseedRecord(
+                record_index=record_index,
+                source_id=source_id,
+                start_timestamp=start_ts,
+                sample_rate=float(sample_rate),
+                encoding=int(encoding),
+                samples=samples,
+                extra_headers=extra_headers_text,
+            )
+        )
 
         offset += record_len
         record_index += 1
@@ -176,40 +263,13 @@ def read_miniseed(path: str | Path) -> MiniseedData:
     if offset != len(data):
         raise ValueError("Trailing bytes after final record")
 
-    if frames:
-        dataframe = pd.concat(frames, ignore_index=True)
-    else:
-        dataframe = pd.DataFrame(
-            columns=[
-                "timestamp",
-                "sample",
-                "source_id",
-                "record_index",
-                "sample_index",
-                "sample_rate",
-                "encoding",
-                "extra_headers",
-            ]
-        )
-
-    first_timestamp = dataframe["timestamp"].iloc[0] if not dataframe.empty else None
-    last_timestamp = dataframe["timestamp"].iloc[-1] if not dataframe.empty else None
-
-    return MiniseedData(
-        first_timestamp=first_timestamp,
-        last_timestamp=last_timestamp,
-        number_of_records=record_index,
-        dataframe=dataframe,
-    )
+    return MiniseedData(records=records)
 
 
 def read_csv(path: str | Path) -> MiniseedData:
     """Read a CSV export into a MiniseedData container."""
     df = pd.read_csv(path, parse_dates=["timestamp"])
-    if "record_index" in df.columns:
-        record_count = int(df["record_index"].max()) + 1 if not df.empty else 0
-    else:
-        record_count = 1 if not df.empty else 0
+    if "record_index" not in df.columns:
         df = df.copy()
         df["record_index"] = 0
 
@@ -217,27 +277,61 @@ def read_csv(path: str | Path) -> MiniseedData:
         df = df.copy()
         df["sample_index"] = df.groupby("record_index").cumcount()
 
-    first_timestamp = df["timestamp"].iloc[0] if not df.empty else None
-    last_timestamp = df["timestamp"].iloc[-1] if not df.empty else None
+    if df.empty:
+        return MiniseedData()
 
-    return MiniseedData(
-        first_timestamp=first_timestamp,
-        last_timestamp=last_timestamp,
-        number_of_records=record_count,
-        dataframe=df,
-    )
+    records: list[MiniseedRecord] = []
+    for record_index, group in df.groupby("record_index", sort=True):
+        group = (
+            group.sort_values("sample_index")
+            if "sample_index" in group.columns
+            else group
+        )
+        source_id = (
+            str(group["source_id"].iloc[0]) if "source_id" in group.columns else ""
+        )
+        encoding = int(group["encoding"].iloc[0]) if "encoding" in group.columns else 3
+        sample_rate = (
+            float(group["sample_rate"].iloc[0])
+            if "sample_rate" in group.columns
+            else 0.0
+        )
+        timestamps = pd.to_datetime(group["timestamp"], utc=True).tolist()
+        start_timestamp = None
+        if timestamps:
+            start_ts = timestamps[0]
+            start_timestamp = None if pd.isna(start_ts) else pd.Timestamp(start_ts)
+        samples = group["sample"].tolist() if "sample" in group.columns else []
+        extra_headers = None
+        if "extra_headers" in group.columns:
+            extra_value = group["extra_headers"].iloc[0]
+            extra_headers = None if pd.isna(extra_value) else str(extra_value)
+
+        records.append(
+            MiniseedRecord(
+                record_index=int(record_index),
+                source_id=source_id,
+                start_timestamp=start_timestamp,
+                sample_rate=sample_rate,
+                encoding=encoding,
+                samples=samples,
+                timestamps=timestamps,
+                extra_headers=extra_headers,
+            )
+        )
+
+    return MiniseedData(records=records)
 
 
 def read_json(path: str | Path) -> MiniseedData:
     """Read a JSON record list into MiniseedData and preserve raw records."""
-    records = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(records, list):
+    raw_records = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw_records, list):
         raise ValueError("JSON root must be a list of records")
 
-    frames: list[pd.DataFrame] = []
-    record_index = 0
+    records: list[MiniseedRecord] = []
 
-    for record in records:
+    for record_index, record in enumerate(raw_records):
         if not isinstance(record, dict):
             raise ValueError(f"Record {record_index} is not an object")
 
@@ -247,58 +341,73 @@ def read_json(path: str | Path) -> MiniseedData:
         sample_rate_raw = record.get("SampleRate", 0.0)
         sample_rate = float(sample_rate_raw) if sample_rate_raw is not None else 0.0
         start_time = record.get("StartTime")
-        start_ts = pd.to_datetime(start_time, utc=True) if start_time is not None else None
-
-        data = record.get("Data", [])
-        if isinstance(data, list):
-            samples = data
-            if start_ts is not None:
-                timestamps = _build_timestamps(start_ts, sample_rate, len(samples))
-            else:
-                timestamps = pd.DatetimeIndex([pd.NaT] * len(samples), tz="UTC")
-
-            frame = pd.DataFrame(
-                {
-                    "timestamp": timestamps,
-                    "sample": samples,
-                    "source_id": source_id,
-                    "record_index": record_index,
-                    "sample_index": np.arange(len(samples), dtype="int64"),
-                    "sample_rate": sample_rate,
-                    "encoding": encoding,
-                }
-            )
-            if "ExtraHeaders" in record:
-                frame["extra_headers"] = json.dumps(record["ExtraHeaders"])
-            frames.append(frame)
-
-        record_index += 1
-
-    if frames:
-        dataframe = pd.concat(frames, ignore_index=True)
-    else:
-        dataframe = pd.DataFrame(
-            columns=[
-                "timestamp",
-                "sample",
-                "source_id",
-                "record_index",
-                "sample_index",
-                "sample_rate",
-                "encoding",
-                "extra_headers",
-            ]
+        start_ts = (
+            pd.to_datetime(start_time, utc=True) if start_time is not None else None
         )
 
-    first_timestamp = dataframe["timestamp"].iloc[0] if not dataframe.empty else None
-    last_timestamp = dataframe["timestamp"].iloc[-1] if not dataframe.empty else None
+        data = record.get("Data", [])
+        samples = data if isinstance(data, list) else []
+        extra_headers = None
+        if "ExtraHeaders" in record:
+            extra_headers = json.dumps(record["ExtraHeaders"])
 
-    return MiniseedData(
-        first_timestamp=first_timestamp,
-        last_timestamp=last_timestamp,
-        number_of_records=record_index,
-        dataframe=dataframe,
-        json_records=records,
+        records.append(
+            MiniseedRecord(
+                record_index=record_index,
+                source_id=source_id,
+                start_timestamp=start_ts,
+                sample_rate=sample_rate,
+                encoding=encoding,
+                samples=samples,
+                extra_headers=extra_headers,
+            )
+        )
+
+    return MiniseedData(records=records, json_records=raw_records)
+
+
+def _records_to_dataframe(records: list[MiniseedRecord]) -> pd.DataFrame:
+    """Build a dataframe from a list of records."""
+    frames: list[pd.DataFrame] = []
+    for record in records:
+        samples = record.samples
+        if record.timestamps is not None:
+            timestamps = pd.DatetimeIndex(pd.to_datetime(record.timestamps, utc=True))
+        elif record.start_timestamp is not None:
+            timestamps = _build_timestamps(
+                record.start_timestamp, record.sample_rate, len(samples)
+            )
+        else:
+            timestamps = pd.DatetimeIndex([pd.NaT] * len(samples), tz="UTC")
+
+        frame = pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                "sample": samples,
+                "source_id": record.source_id,
+                "record_index": record.record_index,
+                "sample_index": np.arange(len(samples), dtype="int64"),
+                "sample_rate": record.sample_rate,
+                "encoding": record.encoding,
+            }
+        )
+        if record.extra_headers is not None:
+            frame["extra_headers"] = record.extra_headers
+        frames.append(frame)
+
+    if frames:
+        return pd.concat(frames, ignore_index=True)
+    return pd.DataFrame(
+        columns=[
+            "timestamp",
+            "sample",
+            "source_id",
+            "record_index",
+            "sample_index",
+            "sample_rate",
+            "encoding",
+            "extra_headers",
+        ]
     )
 
 
@@ -377,14 +486,14 @@ def _encode_steim1(samples: np.ndarray) -> bytes:
         if i + 4 <= len(diffs) and all(_fits_bits(d, 8) for d in diffs[i : i + 4]):
             word = 0
             for shift, val in zip((24, 16, 8, 0), diffs[i : i + 4], strict=True):
-                word |= (_mask_bits(val, 8) << shift)
+                word |= _mask_bits(val, 8) << shift
             data_words.append(word)
             data_codes.append(1)
             i += 4
         elif i + 2 <= len(diffs) and all(_fits_bits(d, 16) for d in diffs[i : i + 2]):
             word = 0
             for shift, val in zip((16, 0), diffs[i : i + 2], strict=True):
-                word |= (_mask_bits(val, 16) << shift)
+                word |= _mask_bits(val, 16) << shift
             data_words.append(word)
             data_codes.append(2)
             i += 2
@@ -414,7 +523,7 @@ def _encode_steim2(samples: np.ndarray) -> bytes:
         if i + 4 <= len(diffs) and all(_fits_bits(d, 8) for d in diffs[i : i + 4]):
             word = 0
             for shift, val in zip((24, 16, 8, 0), diffs[i : i + 4], strict=True):
-                word |= (_mask_bits(val, 8) << shift)
+                word |= _mask_bits(val, 8) << shift
             data_words.append(word)
             data_codes.append(1)
             i += 4

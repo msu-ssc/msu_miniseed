@@ -52,9 +52,9 @@ parsed_file: msu_miniseed.MiniseedData = msu_miniseed.read_miniseed("seismometer
 
 print(f"Number of records: {len(parsed_file)}")
 
-# `parsed_file.dataframe` will be a Pandas dataframe
+# `parsed_file.df` will be a Pandas dataframe
 print(f"Head data:")
-print(parsed_file.dataframe.head())
+print(parsed_file.df.head())
 
 # Can output to a .csv or a .miniseed
 parsed_file.to_csv("seismometer_data.csv")
@@ -66,8 +66,8 @@ print(f"Number of records (in reconstructed MiniseedData): {len(parsed_file_2)}"
 
 # Getting the actual data.
 # The actual instrument value is in the column "sample"
-timestamp_values = parsed_file.dataframe["timestamp"].to_numpy()
-sample_values = parsed_file.dataframe["sample"].to_numpy()
+timestamp_values = parsed_file.df["timestamp"].to_numpy()
+sample_values = parsed_file.df["sample"].to_numpy()
 
 # These will be normal 1D numpy arrays. You can do whatever with them:
 import matplotlib.pyplot as plt
