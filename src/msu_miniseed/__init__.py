@@ -32,6 +32,9 @@ class ParsedFile:
     def to_miniseed(self, path: Path | str) -> None:
         write_miniseed(self.dataframe, path)
 
+    def __len__(self) -> int:
+        return len(self.dataframe)
+
 
 def parse_file(path: str | Path) -> ParsedFile:
     data = Path(path).read_bytes()

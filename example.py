@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 
 from msu_miniseed import parse_file
 
-
 def main() -> None:
     matplotlib.use("Agg")
     base = Path("input")
