@@ -20,7 +20,7 @@ def _json_sample_files() -> list[Path]:
     return sorted(SAMPLES_ROOT.rglob("*.json"))
 
 
-@pytest.mark.parametrize("path", _sample_files())
+@pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_parse_sample_files(path: Path):
     parsed = parse_file(path)
     assert parsed.number_of_records > 0
@@ -35,7 +35,7 @@ def test_parse_sample_files(path: Path):
     assert pd.to_datetime(parsed.dataframe["timestamp"], utc=True).is_monotonic_increasing
 
 
-@pytest.mark.parametrize("path", _sample_files())
+@pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
     parsed = parse_file(path)
     if parsed.dataframe.empty:
@@ -58,7 +58,7 @@ def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
     assert first_miniseed.read_bytes() == second_miniseed.read_bytes()
 
 
-@pytest.mark.parametrize("path", _sample_files())
+@pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
     parsed = parse_file(path)
     if parsed.dataframe.empty:
@@ -88,7 +88,7 @@ def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
         )
 
 
-@pytest.mark.parametrize("path", _json_sample_files())
+@pytest.mark.parametrize("path", _json_sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_json_files(path: Path, tmp_path: Path):
     original_blob = json.loads(path.read_text(encoding="utf-8"))
     parsed = ParsedFile.from_json(path)
