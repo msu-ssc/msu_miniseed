@@ -20,14 +20,22 @@ class ParsedFile:
     last_timestamp: pd.Timestamp | None
     number_of_records: int
     dataframe: pd.DataFrame
+    json_records: list[dict[str, object]] | None = None
 
     @classmethod
     def from_csv(cls, path: str | Path) -> "ParsedFile":
         return parse_csv(path)
 
+    @classmethod
+    def from_json(cls, path: str | Path) -> "ParsedFile":
+        return parse_json(path)
+
     def to_csv(self, path: Path | str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.dataframe.to_csv(path, index=False, float_format="%.17g")
+
+    def to_json(self, path: Path | str) -> None:
+        write_json(self, path)
 
     def to_miniseed(self, path: Path | str) -> None:
         write_miniseed(self.dataframe, path)
@@ -151,6 +159,86 @@ def parse_csv(path: str | Path) -> ParsedFile:
         number_of_records=record_count,
         dataframe=df,
     )
+
+
+def parse_json(path: str | Path) -> ParsedFile:
+    records = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(records, list):
+        raise ValueError("JSON root must be a list of records")
+
+    frames: list[pd.DataFrame] = []
+    record_index = 0
+
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError(f"Record {record_index} is not an object")
+
+        source_id = str(record.get("SID", ""))
+        encoding_raw = record.get("EncodingFormat", 0)
+        encoding = int(encoding_raw) if encoding_raw is not None else 0
+        sample_rate_raw = record.get("SampleRate", 0.0)
+        sample_rate = float(sample_rate_raw) if sample_rate_raw is not None else 0.0
+        start_time = record.get("StartTime")
+        start_ts = pd.to_datetime(start_time, utc=True) if start_time is not None else None
+
+        data = record.get("Data", [])
+        if isinstance(data, list):
+            samples = data
+            if start_ts is not None:
+                timestamps = _build_timestamps(start_ts, sample_rate, len(samples))
+            else:
+                timestamps = pd.DatetimeIndex([pd.NaT] * len(samples), tz="UTC")
+
+            frame = pd.DataFrame(
+                {
+                    "timestamp": timestamps,
+                    "sample": samples,
+                    "source_id": source_id,
+                    "record_index": record_index,
+                    "sample_index": np.arange(len(samples), dtype="int64"),
+                    "sample_rate": sample_rate,
+                    "encoding": encoding,
+                }
+            )
+            if "ExtraHeaders" in record:
+                frame["extra_headers"] = json.dumps(record["ExtraHeaders"])
+            frames.append(frame)
+
+        record_index += 1
+
+    if frames:
+        dataframe = pd.concat(frames, ignore_index=True)
+    else:
+        dataframe = pd.DataFrame(
+            columns=[
+                "timestamp",
+                "sample",
+                "source_id",
+                "record_index",
+                "sample_index",
+                "sample_rate",
+                "encoding",
+                "extra_headers",
+            ]
+        )
+
+    first_timestamp = dataframe["timestamp"].iloc[0] if not dataframe.empty else None
+    last_timestamp = dataframe["timestamp"].iloc[-1] if not dataframe.empty else None
+
+    return ParsedFile(
+        first_timestamp=first_timestamp,
+        last_timestamp=last_timestamp,
+        number_of_records=record_index,
+        dataframe=dataframe,
+        json_records=records,
+    )
+
+
+def write_json(parsed: ParsedFile, path: Path | str) -> None:
+    if parsed.json_records is None:
+        raise ValueError("ParsedFile does not contain JSON record metadata")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(json.dumps(parsed.json_records, indent=4), encoding="utf-8")
 
 
 def write_miniseed(dataframe: pd.DataFrame, path: Path | str) -> None:

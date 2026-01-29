@@ -20,10 +20,10 @@ There are [Github Releases](https://github.com/msu-ssc/msu_miniseed/releases) wi
 
 ```sh
 # Install most recent version:
-uv add "msu_miniseed @ git:https://github.com/msu-ssc/msu_miniseed"
+uv add "msu_miniseed @ git+https://github.com/msu-ssc/msu_miniseed"
 
 # Install specific version
-uv add "msu_miniseed @ git:https://github.com/msu-ssc/msu_miniseed" --rev 0.1.1
+uv add "msu_miniseed @ git+https://github.com/msu-ssc/msu_miniseed" --rev 0.1.1
 ```
 
 ### pip

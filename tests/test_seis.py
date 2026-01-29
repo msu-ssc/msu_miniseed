@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,10 @@ SAMPLES_ROOT = Path("tests/sample_data")
 
 def _sample_files() -> list[Path]:
     return sorted(SAMPLES_ROOT.rglob("*.mseed3"))
+
+
+def _json_sample_files() -> list[Path]:
+    return sorted(SAMPLES_ROOT.rglob("*.json"))
 
 
 @pytest.mark.parametrize("path", _sample_files())
@@ -81,3 +86,16 @@ def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
         assert df_a["sample_rate"].to_numpy() == pytest.approx(
             df_b["sample_rate"].to_numpy(), rel=1e-12, abs=1e-12
         )
+
+
+@pytest.mark.parametrize("path", _json_sample_files())
+def test_roundtrip_json_files(path: Path, tmp_path: Path):
+    original_blob = json.loads(path.read_text(encoding="utf-8"))
+    parsed = ParsedFile.from_json(path)
+    reconstructed_path = tmp_path / f"{path.stem}-reconstructed.json"
+    parsed.to_json(reconstructed_path)
+
+    reconstructed_text = reconstructed_path.read_text(encoding="utf-8")
+    assert reconstructed_text == json.dumps(original_blob, indent=4)
+    reconstructed_blob = json.loads(reconstructed_text)
+    assert original_blob == reconstructed_blob
