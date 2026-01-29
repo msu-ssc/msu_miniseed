@@ -1,0 +1,72 @@
+name: Build & GitHub Release on semver tag (uv)
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-bump-release:
+    # Only run for tags like "1.2.3", and prevent an infinite loop when the workflow force-updates the tag.
+    if: "${{ matches(github.ref_name, '^[0-9]+\.[0-9]+\.[0-9]+$') && github.actor != 'github-actions[bot]' }}"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: latest
+          enable-cache: true
+
+      - name: "Bump version, commit, and push (author: GitHub Actions bot)"
+        env:
+          TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          # Ensure we can commit/push as the Actions bot
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Make sure we have the default branch locally (we're currently checked out at a tag)
+          git fetch origin "$DEFAULT_BRANCH":"$DEFAULT_BRANCH"
+
+          # Move to default branch, then apply the version bump there
+          git checkout "$DEFAULT_BRANCH"
+
+          # Update version to match the pushed tag
+          uv version "$TAG"
+
+          # Commit only if something actually changed
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add -A
+            git commit -m "chore: Bump version to $TAG"
+            git push origin "$DEFAULT_BRANCH"
+          else
+            echo "No changes after 'uv version $TAG' (nothing to commit)."
+          fi
+
+          # Force-update the tag to point at this commit so the release/tag matches the bumped version.
+          git tag -f "$TAG"
+          git push origin -f "refs/tags/$TAG"
+
+      - name: Build (sdist + wheel)
+        run: uv build
+
+      - name: Create GitHub Release and upload artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*
