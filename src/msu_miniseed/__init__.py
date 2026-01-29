@@ -33,18 +33,83 @@ class MiniseedData:
 
     def to_json(self, path: Path | str) -> None:
         """Write JSON records using standard json.dumps indentation."""
-        write_json(self, path)
+        if self.json_records is None:
+            raise ValueError("MiniseedData does not contain JSON record metadata")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(json.dumps(self.json_records, indent=4), encoding="utf-8")
 
     def to_miniseed(self, path: Path | str) -> None:
         """Serialize the dataframe to miniSEED 3 binary format."""
-        write_miniseed(self.dataframe, path)
+        if self.dataframe.empty:
+            Path(path).write_bytes(b"")
+            return
+
+        df = self.dataframe.copy()
+        if "timestamp" not in df.columns or "sample" not in df.columns:
+            raise ValueError("dataframe must contain timestamp and sample columns")
+
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        df["record_index"] = df.get("record_index", 0)
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        parts: list[bytes] = []
+
+        for record_index, group in df.groupby("record_index", sort=True):
+            group = (
+                group.sort_values("sample_index")
+                if "sample_index" in group.columns
+                else group
+            )
+            source_id = str(group["source_id"].iloc[0]) if "source_id" in group.columns else ""
+            sample_rate = _infer_sample_rate(group)
+            encoding = int(group["encoding"].iloc[0]) if "encoding" in group.columns else 3
+            if "encoding" in group.columns and (group["encoding"].nunique() > 1):
+                raise ValueError(f"Multiple encodings in record {record_index}")
+            samples, payload = _encode_payload(encoding, group["sample"])
+
+            start_ts = pd.Timestamp(group["timestamp"].iloc[0])
+            year = start_ts.year
+            doy = int(start_ts.dayofyear)
+            hour = start_ts.hour
+            minute = start_ts.minute
+            second = start_ts.second
+            nanosec = start_ts.microsecond * 1_000 + start_ts.nanosecond
+
+            id_bytes = source_id.encode("ascii", errors="replace")
+            id_len = len(id_bytes)
+            extra_len = 0
+            payload_len = len(payload)
+            header = struct.pack(
+                HEADER_FMT,
+                b"MS",
+                3,
+                0,
+                nanosec,
+                year,
+                doy,
+                hour,
+                minute,
+                second,
+                encoding,
+                float(sample_rate),
+                int(len(samples)),
+                0,
+                0,
+                id_len,
+                extra_len,
+                payload_len,
+            )
+            parts.append(header + id_bytes + payload)
+
+        path.write_bytes(b"".join(parts))
 
     def __len__(self) -> int:
         """Return the number of samples in the dataframe."""
         return len(self.dataframe)
 
 
-def read_file(path: str | Path) -> MiniseedData:
+def read_miniseed(path: str | Path) -> MiniseedData:
     """Read a miniSEED 3 binary file into a MiniseedData container."""
     data = Path(path).read_bytes()
     frames: list[pd.DataFrame] = []
@@ -235,77 +300,6 @@ def read_json(path: str | Path) -> MiniseedData:
         dataframe=dataframe,
         json_records=records,
     )
-
-
-def write_json(parsed: MiniseedData, path: Path | str) -> None:
-    """Write preserved JSON records with standard indentation."""
-    if parsed.json_records is None:
-        raise ValueError("MiniseedData does not contain JSON record metadata")
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps(parsed.json_records, indent=4), encoding="utf-8")
-
-
-def write_miniseed(dataframe: pd.DataFrame, path: Path | str) -> None:
-    """Encode a dataframe into miniSEED 3 binary records."""
-    if dataframe.empty:
-        Path(path).write_bytes(b"")
-        return
-
-    df = dataframe.copy()
-    if "timestamp" not in df.columns or "sample" not in df.columns:
-        raise ValueError("dataframe must contain timestamp and sample columns")
-
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df["record_index"] = df.get("record_index", 0)
-
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    parts: list[bytes] = []
-
-    for record_index, group in df.groupby("record_index", sort=True):
-        group = group.sort_values("sample_index") if "sample_index" in group.columns else group
-        source_id = str(group["source_id"].iloc[0]) if "source_id" in group.columns else ""
-        sample_rate = _infer_sample_rate(group)
-        encoding = int(group["encoding"].iloc[0]) if "encoding" in group.columns else 3
-        if "encoding" in group.columns and (group["encoding"].nunique() > 1):
-            raise ValueError(f"Multiple encodings in record {record_index}")
-        samples, payload = _encode_payload(encoding, group["sample"])
-
-        start_ts = pd.Timestamp(group["timestamp"].iloc[0])
-        year = start_ts.year
-        doy = int(start_ts.dayofyear)
-        hour = start_ts.hour
-        minute = start_ts.minute
-        second = start_ts.second
-        nanosec = start_ts.microsecond * 1_000 + start_ts.nanosecond
-
-        id_bytes = source_id.encode("ascii", errors="replace")
-        id_len = len(id_bytes)
-        extra_len = 0
-        payload_len = len(payload)
-        header = struct.pack(
-            HEADER_FMT,
-            b"MS",
-            3,
-            0,
-            nanosec,
-            year,
-            doy,
-            hour,
-            minute,
-            second,
-            encoding,
-            float(sample_rate),
-            int(len(samples)),
-            0,
-            0,
-            id_len,
-            extra_len,
-            payload_len,
-        )
-        parts.append(header + id_bytes + payload)
-
-    path.write_bytes(b"".join(parts))
 
 
 def _build_start_timestamp(
@@ -715,4 +709,4 @@ def _sign_extend(value: int, bits: int) -> int:
 
 def main() -> None:
     """Print a short usage hint for the CLI entrypoint."""
-    print("Use read_file(path) to read miniSEED data.")
+    print("Use read_miniseed(path) to read miniSEED data.")

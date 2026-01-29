@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from msu_miniseed import MiniseedData, read_file, read_csv, read_json
+from msu_miniseed import MiniseedData, read_miniseed, read_csv, read_json
 
 
 SAMPLES_ROOT = Path("tests/sample_data")
@@ -22,7 +22,7 @@ def _json_sample_files() -> list[Path]:
 
 @pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_parse_sample_files(path: Path):
-    parsed = read_file(path)
+    parsed = read_miniseed(path)
     assert parsed.number_of_records > 0
     if parsed.dataframe.empty:
         assert parsed.first_timestamp is None
@@ -37,7 +37,7 @@ def test_parse_sample_files(path: Path):
 
 @pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
-    parsed = read_file(path)
+    parsed = read_miniseed(path)
     if parsed.dataframe.empty:
         return
 
@@ -48,7 +48,7 @@ def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
     first_miniseed = tmp_path / f"{path.stem}-first.mseed3"
     parsed.to_miniseed(first_miniseed)
 
-    reparsed = read_file(first_miniseed)
+    reparsed = read_miniseed(first_miniseed)
     csv_path = tmp_path / f"{path.stem}-roundtrip.csv"
     reparsed.to_csv(csv_path)
     roundtrip = read_csv(csv_path)
@@ -60,7 +60,7 @@ def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
 
 @pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
-    parsed = read_file(path)
+    parsed = read_miniseed(path)
     if parsed.dataframe.empty:
         return
 
@@ -74,7 +74,7 @@ def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
     miniseed_path = tmp_path / f"{path.stem}-rt.mseed3"
     reparsed.to_miniseed(miniseed_path)
     csv_second = tmp_path / f"{path.stem}-second.csv"
-    read_file(miniseed_path).to_csv(csv_second)
+    read_miniseed(miniseed_path).to_csv(csv_second)
 
     df_a = pd.read_csv(csv_first, parse_dates=["timestamp"])
     df_b = pd.read_csv(csv_second, parse_dates=["timestamp"])

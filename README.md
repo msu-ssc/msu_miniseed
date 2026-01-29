@@ -48,7 +48,7 @@ There are only a few things in the public API.
 import msu_miniseed
 
 
-parsed_file: msu_miniseed.MiniseedData = msu_miniseed.read_file("seismometer_data.miniseed")
+parsed_file: msu_miniseed.MiniseedData = msu_miniseed.read_miniseed("seismometer_data.miniseed")
 
 print(f"Number of records: {len(parsed_file)}")
 
