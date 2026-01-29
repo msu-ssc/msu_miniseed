@@ -7,7 +7,7 @@ import matplotlib.dates as mdates
 from matplotlib.ticker import StrMethodFormatter
 import matplotlib.pyplot as plt
 
-from seis import parse_file
+from msu_miniseed import parse_file
 
 
 def main() -> None:

@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from seis import ParsedFile, parse_file
+from msu_miniseed import ParsedFile, parse_file
 
 
 SAMPLES_ROOT = Path("tests/sample_data")

@@ -160,6 +160,29 @@ wheels = [
 ]
 
 [[package]]
+name = "msu-miniseed"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "pandas" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+plot = [
+    { name = "matplotlib" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pandas", specifier = ">=2,<3" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
+plot = [{ name = "matplotlib", specifier = ">=3.10.8" }]
+
+[[package]]
 name = "numpy"
 version = "2.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -320,29 +343,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/f8/bf/abbd3cdfb8fbc7fb3
 wheels = [
     { url = "https://files.pythonhosted.org/packages/81/c4/34e93fe5f5429d7570ec1fa436f1986fb1f00c3e0f43a589fe2bbcd22c3f/pytz-2025.2-py2.py3-none-any.whl", hash = "sha256:5ddf76296dd8c44c26eb8f4b6f35488f3ccbf6fbbd7adee0b7262d43f0ec2f00", size = 509225, upload-time = "2025-03-25T02:24:58.468Z" },
 ]
-
-[[package]]
-name = "seis"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "pandas" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-plot = [
-    { name = "matplotlib" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pandas", specifier = ">=2,<3" }]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.0.2" }]
-plot = [{ name = "matplotlib", specifier = ">=3.10.8" }]
 
 [[package]]
 name = "six"

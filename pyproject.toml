@@ -1,8 +1,10 @@
 [project]
-name = "seis"
+name = "msu-miniseed"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "David Mayo", email = "dcmayo@moreheadstate.edu" }
 ]
@@ -10,9 +12,6 @@ requires-python = ">=3.14"
 dependencies = [
     "pandas>=2,<3",
 ]
-
-[project.scripts]
-seis = "seis:main"
 
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
