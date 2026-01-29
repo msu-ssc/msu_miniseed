@@ -27,7 +27,7 @@ class ParsedFile:
 
     def to_csv(self, path: Path | str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.dataframe.to_csv(path, index=False)
+        self.dataframe.to_csv(path, index=False, float_format="%.17g")
 
     def to_miniseed(self, path: Path | str) -> None:
         write_miniseed(self.dataframe, path)
@@ -414,6 +414,8 @@ def _mask_bits(value: int, bits: int) -> int:
 
 def _decode_payload(encoding: int, payload: bytes, nsamples: int) -> list[int | float]:
     if nsamples == 0:
+        return []
+    if encoding == 0:
         return []
     if encoding == 1:
         return _decode_int16(payload, nsamples)
