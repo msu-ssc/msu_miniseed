@@ -48,7 +48,7 @@ There are only a few things in the public API.
 import msu_miniseed
 
 
-parsed_file: msu_miniseed.ParsedFile = msu_miniseed.parse_file("seismometer_data.miniseed")
+parsed_file: msu_miniseed.MiniseedData = msu_miniseed.read_file("seismometer_data.miniseed")
 
 print(f"Number of records: {len(parsed_file)}")
 
@@ -60,9 +60,9 @@ print(parsed_file.dataframe.head())
 parsed_file.to_csv("seismometer_data.csv")
 parsed_file.to_miniseed("seismometer_data2.miniseed")
 
-# That CSV can also be loaded as a `ParsedFile`
-parsed_file_2: msu_miniseed.ParsedFile = msu_miniseed.parse_csv(seismometer_data.csv)
-print(f"Number of records (in reconstructed ParsedFile): {len(parsed_file_2)}")
+# That CSV can also be loaded as a `MiniseedData`
+parsed_file_2: msu_miniseed.MiniseedData = msu_miniseed.read_csv(seismometer_data.csv)
+print(f"Number of records (in reconstructed MiniseedData): {len(parsed_file_2)}")
 
 # Getting the actual data.
 # The actual instrument value is in the column "sample"

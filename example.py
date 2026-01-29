@@ -7,7 +7,7 @@ import matplotlib.dates as mdates
 from matplotlib.ticker import StrMethodFormatter
 import matplotlib.pyplot as plt
 
-from msu_miniseed import parse_file
+from msu_miniseed import read_file
 
 def main() -> None:
     matplotlib.use("Agg")
@@ -21,7 +21,7 @@ def main() -> None:
     csv_root = Path("output/csv/")
 
     for path in paths:
-        parsed = parse_file(path)
+        parsed = read_file(path)
         df = parsed.dataframe
         print(f"{path}:")
         print(f"  records: {parsed.number_of_records}")

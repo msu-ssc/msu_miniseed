@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from msu_miniseed import ParsedFile, parse_file
+from msu_miniseed import MiniseedData, read_file, read_csv, read_json
 
 
 SAMPLES_ROOT = Path("tests/sample_data")
@@ -22,7 +22,7 @@ def _json_sample_files() -> list[Path]:
 
 @pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_parse_sample_files(path: Path):
-    parsed = parse_file(path)
+    parsed = read_file(path)
     assert parsed.number_of_records > 0
     if parsed.dataframe.empty:
         assert parsed.first_timestamp is None
@@ -37,7 +37,7 @@ def test_parse_sample_files(path: Path):
 
 @pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
-    parsed = parse_file(path)
+    parsed = read_file(path)
     if parsed.dataframe.empty:
         return
 
@@ -48,10 +48,10 @@ def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
     first_miniseed = tmp_path / f"{path.stem}-first.mseed3"
     parsed.to_miniseed(first_miniseed)
 
-    reparsed = parse_file(first_miniseed)
+    reparsed = read_file(first_miniseed)
     csv_path = tmp_path / f"{path.stem}-roundtrip.csv"
     reparsed.to_csv(csv_path)
-    roundtrip = ParsedFile.from_csv(csv_path)
+    roundtrip = read_csv(csv_path)
     second_miniseed = tmp_path / f"{path.stem}-second.mseed3"
     roundtrip.to_miniseed(second_miniseed)
 
@@ -60,7 +60,7 @@ def test_roundtrip_miniseed_csv_miniseed_bytes(path: Path, tmp_path: Path):
 
 @pytest.mark.parametrize("path", _sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
-    parsed = parse_file(path)
+    parsed = read_file(path)
     if parsed.dataframe.empty:
         return
 
@@ -70,11 +70,11 @@ def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
 
     csv_first = tmp_path / f"{path.stem}-first.csv"
     parsed.to_csv(csv_first)
-    reparsed = ParsedFile.from_csv(csv_first)
+    reparsed = read_csv(csv_first)
     miniseed_path = tmp_path / f"{path.stem}-rt.mseed3"
     reparsed.to_miniseed(miniseed_path)
     csv_second = tmp_path / f"{path.stem}-second.csv"
-    parse_file(miniseed_path).to_csv(csv_second)
+    read_file(miniseed_path).to_csv(csv_second)
 
     df_a = pd.read_csv(csv_first, parse_dates=["timestamp"])
     df_b = pd.read_csv(csv_second, parse_dates=["timestamp"])
@@ -91,7 +91,7 @@ def test_roundtrip_csv_equivalence_for_floats(path: Path, tmp_path: Path):
 @pytest.mark.parametrize("path", _json_sample_files(), ids=lambda x: x.stem)
 def test_roundtrip_json_files(path: Path, tmp_path: Path):
     original_blob = json.loads(path.read_text(encoding="utf-8"))
-    parsed = ParsedFile.from_json(path)
+    parsed = read_json(path)
     reconstructed_path = tmp_path / f"{path.stem}-reconstructed.json"
     parsed.to_json(reconstructed_path)
 

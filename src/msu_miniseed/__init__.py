@@ -17,24 +17,14 @@ HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 
 @dataclass(slots=True)
-class ParsedFile:
-    """Container for parsed miniSEED records and metadata."""
+class MiniseedData:
+    """Container for miniSEED records and metadata."""
 
     first_timestamp: pd.Timestamp | None
     last_timestamp: pd.Timestamp | None
     number_of_records: int
     dataframe: pd.DataFrame
     json_records: list[dict[str, object]] | None = None
-
-    @classmethod
-    def from_csv(cls, path: str | Path) -> "ParsedFile":
-        """Load a ParsedFile from a CSV export."""
-        return parse_csv(path)
-
-    @classmethod
-    def from_json(cls, path: str | Path) -> "ParsedFile":
-        """Load a ParsedFile from a JSON record list."""
-        return parse_json(path)
 
     def to_csv(self, path: Path | str) -> None:
         """Write the dataframe to a CSV file."""
@@ -54,8 +44,8 @@ class ParsedFile:
         return len(self.dataframe)
 
 
-def parse_file(path: str | Path) -> ParsedFile:
-    """Parse a miniSEED 3 binary file into a ParsedFile."""
+def read_file(path: str | Path) -> MiniseedData:
+    """Read a miniSEED 3 binary file into a MiniseedData container."""
     data = Path(path).read_bytes()
     frames: list[pd.DataFrame] = []
     record_index = 0
@@ -140,7 +130,7 @@ def parse_file(path: str | Path) -> ParsedFile:
     first_timestamp = dataframe["timestamp"].iloc[0] if not dataframe.empty else None
     last_timestamp = dataframe["timestamp"].iloc[-1] if not dataframe.empty else None
 
-    return ParsedFile(
+    return MiniseedData(
         first_timestamp=first_timestamp,
         last_timestamp=last_timestamp,
         number_of_records=record_index,
@@ -148,8 +138,8 @@ def parse_file(path: str | Path) -> ParsedFile:
     )
 
 
-def parse_csv(path: str | Path) -> ParsedFile:
-    """Parse a CSV export into a ParsedFile."""
+def read_csv(path: str | Path) -> MiniseedData:
+    """Read a CSV export into a MiniseedData container."""
     df = pd.read_csv(path, parse_dates=["timestamp"])
     if "record_index" in df.columns:
         record_count = int(df["record_index"].max()) + 1 if not df.empty else 0
@@ -165,7 +155,7 @@ def parse_csv(path: str | Path) -> ParsedFile:
     first_timestamp = df["timestamp"].iloc[0] if not df.empty else None
     last_timestamp = df["timestamp"].iloc[-1] if not df.empty else None
 
-    return ParsedFile(
+    return MiniseedData(
         first_timestamp=first_timestamp,
         last_timestamp=last_timestamp,
         number_of_records=record_count,
@@ -173,8 +163,8 @@ def parse_csv(path: str | Path) -> ParsedFile:
     )
 
 
-def parse_json(path: str | Path) -> ParsedFile:
-    """Parse a JSON record list into a ParsedFile and preserve the raw records."""
+def read_json(path: str | Path) -> MiniseedData:
+    """Read a JSON record list into MiniseedData and preserve raw records."""
     records = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(records, list):
         raise ValueError("JSON root must be a list of records")
@@ -238,7 +228,7 @@ def parse_json(path: str | Path) -> ParsedFile:
     first_timestamp = dataframe["timestamp"].iloc[0] if not dataframe.empty else None
     last_timestamp = dataframe["timestamp"].iloc[-1] if not dataframe.empty else None
 
-    return ParsedFile(
+    return MiniseedData(
         first_timestamp=first_timestamp,
         last_timestamp=last_timestamp,
         number_of_records=record_index,
@@ -247,10 +237,10 @@ def parse_json(path: str | Path) -> ParsedFile:
     )
 
 
-def write_json(parsed: ParsedFile, path: Path | str) -> None:
+def write_json(parsed: MiniseedData, path: Path | str) -> None:
     """Write preserved JSON records with standard indentation."""
     if parsed.json_records is None:
-        raise ValueError("ParsedFile does not contain JSON record metadata")
+        raise ValueError("MiniseedData does not contain JSON record metadata")
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(parsed.json_records, indent=4), encoding="utf-8")
 
@@ -725,4 +715,4 @@ def _sign_extend(value: int, bits: int) -> int:
 
 def main() -> None:
     """Print a short usage hint for the CLI entrypoint."""
-    print("Use parse_file(path) to parse miniSEED data.")
+    print("Use read_file(path) to read miniSEED data.")
