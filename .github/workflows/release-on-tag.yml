@@ -1,17 +1,17 @@
-name: Build & GitHub Release on semver tag (uv)
+name: Build & GitHub Release on tag (uv)
 
 on:
   push:
     tags:
-      - "*"
+      - "*.*.*"
 
 permissions:
   contents: write
 
 jobs:
   build-bump-release:
-    # Only run for tags like "1.2.3", and prevent an infinite loop when the workflow force-updates the tag.
-    if: "${{ matches(github.ref_name, '^[0-9]+\.[0-9]+\.[0-9]+$') && github.actor != 'github-actions[bot]' }}"
+    # Prevent an infinite loop when the workflow force-updates the tag.
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -33,20 +33,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Ensure we can commit/push as the Actions bot
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Make sure we have the default branch locally (we're currently checked out at a tag)
+          # We start checked out at the tag; fetch and switch to the default branch
           git fetch origin "$DEFAULT_BRANCH":"$DEFAULT_BRANCH"
-
-          # Move to default branch, then apply the version bump there
           git checkout "$DEFAULT_BRANCH"
 
-          # Update version to match the pushed tag
+          # Bump version to match the tag name (whatever it is)
           uv version "$TAG"
 
-          # Commit only if something actually changed
+          # Commit only if something changed
           if [[ -n "$(git status --porcelain)" ]]; then
             git add -A
             git commit -m "chore: Bump version to $TAG"
@@ -55,7 +52,7 @@ jobs:
             echo "No changes after 'uv version $TAG' (nothing to commit)."
           fi
 
-          # Force-update the tag to point at this commit so the release/tag matches the bumped version.
+          # Move the tag to this commit so the release/tag matches the bumped-version commit
           git tag -f "$TAG"
           git push origin -f "refs/tags/$TAG"
 
