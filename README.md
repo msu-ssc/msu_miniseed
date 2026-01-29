@@ -12,6 +12,34 @@ Simple parsing/creation of [miniSEED 3](https://docs.fdsn.org/projects/miniseed3
 
 The only purpose of this is for us to be able to check whether a `.miniseed` file that we receive from a spacecraft appears to be properly formatted before we send it on to some actual scientists.
 
+## Installation
+
+There are [Github Releases](https://github.com/msu-ssc/msu_miniseed/releases) with wheel files that can be installed with pip/uv. I haven't bothered to set up integrations with PyPI, so you have to install from those wheels, or use the ugly `git` versions of pip or uv
+
+### uv
+
+```sh
+# Install most recent version:
+uv add "msu_miniseed @ git:https://github.com/msu-ssc/msu_miniseed"
+
+# Install specific version
+uv add "msu_miniseed @ git:https://github.com/msu-ssc/msu_miniseed" --rev 0.1.1
+```
+
+### pip
+
+```sh
+# Install most recent version:
+python -m pip install "msu_miniseed @ git+https://github.com/msu-ssc/msu_miniseed"
+
+# Install specific version
+python -m pip install "msu_miniseed @ git+https://github.com/msu-ssc/msu_miniseed@0.1.1"
+```
+
+### No conda
+
+I don't know how to do anything with conda. Sorry.
+
 ## Usage
 
 There are only a few things in the public API.
