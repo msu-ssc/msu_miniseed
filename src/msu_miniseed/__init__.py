@@ -1,3 +1,5 @@
+"""miniSEED 3 parsing and serialization utilities."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +18,8 @@ HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 @dataclass(slots=True)
 class ParsedFile:
+    """Container for parsed miniSEED records and metadata."""
+
     first_timestamp: pd.Timestamp | None
     last_timestamp: pd.Timestamp | None
     number_of_records: int
@@ -24,27 +28,34 @@ class ParsedFile:
 
     @classmethod
     def from_csv(cls, path: str | Path) -> "ParsedFile":
+        """Load a ParsedFile from a CSV export."""
         return parse_csv(path)
 
     @classmethod
     def from_json(cls, path: str | Path) -> "ParsedFile":
+        """Load a ParsedFile from a JSON record list."""
         return parse_json(path)
 
     def to_csv(self, path: Path | str) -> None:
+        """Write the dataframe to a CSV file."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.dataframe.to_csv(path, index=False, float_format="%.17g")
 
     def to_json(self, path: Path | str) -> None:
+        """Write JSON records using standard json.dumps indentation."""
         write_json(self, path)
 
     def to_miniseed(self, path: Path | str) -> None:
+        """Serialize the dataframe to miniSEED 3 binary format."""
         write_miniseed(self.dataframe, path)
 
     def __len__(self) -> int:
+        """Return the number of samples in the dataframe."""
         return len(self.dataframe)
 
 
 def parse_file(path: str | Path) -> ParsedFile:
+    """Parse a miniSEED 3 binary file into a ParsedFile."""
     data = Path(path).read_bytes()
     frames: list[pd.DataFrame] = []
     record_index = 0
@@ -138,6 +149,7 @@ def parse_file(path: str | Path) -> ParsedFile:
 
 
 def parse_csv(path: str | Path) -> ParsedFile:
+    """Parse a CSV export into a ParsedFile."""
     df = pd.read_csv(path, parse_dates=["timestamp"])
     if "record_index" in df.columns:
         record_count = int(df["record_index"].max()) + 1 if not df.empty else 0
@@ -162,6 +174,7 @@ def parse_csv(path: str | Path) -> ParsedFile:
 
 
 def parse_json(path: str | Path) -> ParsedFile:
+    """Parse a JSON record list into a ParsedFile and preserve the raw records."""
     records = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(records, list):
         raise ValueError("JSON root must be a list of records")
@@ -235,6 +248,7 @@ def parse_json(path: str | Path) -> ParsedFile:
 
 
 def write_json(parsed: ParsedFile, path: Path | str) -> None:
+    """Write preserved JSON records with standard indentation."""
     if parsed.json_records is None:
         raise ValueError("ParsedFile does not contain JSON record metadata")
     Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -242,6 +256,7 @@ def write_json(parsed: ParsedFile, path: Path | str) -> None:
 
 
 def write_miniseed(dataframe: pd.DataFrame, path: Path | str) -> None:
+    """Encode a dataframe into miniSEED 3 binary records."""
     if dataframe.empty:
         Path(path).write_bytes(b"")
         return
@@ -306,6 +321,7 @@ def write_miniseed(dataframe: pd.DataFrame, path: Path | str) -> None:
 def _build_start_timestamp(
     year: int, doy: int, hour: int, minute: int, second: int, nanosec: int
 ) -> pd.Timestamp:
+    """Build a UTC timestamp from miniSEED header fields."""
     date = dt.date(year, 1, 1) + dt.timedelta(days=doy - 1)
     leap = 1 if second == 60 else 0
     safe_second = 59 if second == 60 else second
@@ -327,6 +343,7 @@ def _build_start_timestamp(
 def _build_timestamps(
     start: pd.Timestamp, sample_rate: float, count: int
 ) -> pd.DatetimeIndex:
+    """Generate timestamps for a sample sequence."""
     if count == 0:
         return pd.DatetimeIndex([], tz="UTC")
     if sample_rate > 0:
@@ -346,6 +363,7 @@ def _build_timestamps(
 
 
 def _infer_sample_rate(group: pd.DataFrame) -> float:
+    """Infer sample rate from group metadata or timestamps."""
     if "sample_rate" in group.columns:
         value = float(group["sample_rate"].iloc[0])
         if value != 0.0:
@@ -360,6 +378,7 @@ def _infer_sample_rate(group: pd.DataFrame) -> float:
 
 
 def _encode_steim1(samples: np.ndarray) -> bytes:
+    """Encode samples into a Steim-1 payload."""
     if len(samples) == 0:
         return b""
 
@@ -396,6 +415,7 @@ def _encode_steim1(samples: np.ndarray) -> bytes:
 
 
 def _encode_steim2(samples: np.ndarray) -> bytes:
+    """Encode samples into a Steim-2 payload."""
     if len(samples) == 0:
         return b""
 
@@ -430,6 +450,7 @@ def _encode_steim2(samples: np.ndarray) -> bytes:
 
 
 def _differences_from_samples(samples: np.ndarray) -> list[int]:
+    """Compute difference series for Steim encoding."""
     x0 = int(samples[0])
     diffs = [x0]
     prev = x0
@@ -443,6 +464,7 @@ def _differences_from_samples(samples: np.ndarray) -> list[int]:
 def _build_steim_frames(
     data_words: list[int], data_codes: list[int], x0: int, xn: int
 ) -> list[list[int]]:
+    """Build Steim frames and control words for data differences."""
     frames: list[list[int]] = []
     idx = 0
 
@@ -480,6 +502,7 @@ def _build_steim_frames(
 
 
 def _control_word(codes: list[int]) -> int:
+    """Build a 32-bit control word from 2-bit encoding codes."""
     word = 0
     for pos, code in enumerate(codes):
         word |= (code & 0b11) << (30 - 2 * pos)
@@ -487,6 +510,7 @@ def _control_word(codes: list[int]) -> int:
 
 
 def _frames_to_bytes(frames: list[list[int]]) -> bytes:
+    """Pack Steim frames into a big-endian byte stream."""
     words: list[int] = []
     for frame in frames:
         words.extend(frame)
@@ -494,16 +518,19 @@ def _frames_to_bytes(frames: list[list[int]]) -> bytes:
 
 
 def _fits_bits(value: int, bits: int) -> bool:
+    """Return True if value fits in the given signed bit width."""
     min_val = -(1 << (bits - 1))
     max_val = (1 << (bits - 1)) - 1
     return min_val <= value <= max_val
 
 
 def _mask_bits(value: int, bits: int) -> int:
+    """Mask value to the given bit width."""
     return value & ((1 << bits) - 1)
 
 
 def _decode_payload(encoding: int, payload: bytes, nsamples: int) -> list[int | float]:
+    """Decode payload bytes according to the miniSEED encoding."""
     if nsamples == 0:
         return []
     if encoding == 0:
@@ -524,6 +551,7 @@ def _decode_payload(encoding: int, payload: bytes, nsamples: int) -> list[int | 
 
 
 def _encode_payload(encoding: int, series: pd.Series) -> tuple[np.ndarray, bytes]:
+    """Encode samples from a series according to the miniSEED encoding."""
     if encoding == 1:
         samples = series.astype("int16").to_numpy()
         return samples, samples.astype("<i2", copy=False).tobytes()
@@ -546,30 +574,35 @@ def _encode_payload(encoding: int, series: pd.Series) -> tuple[np.ndarray, bytes
 
 
 def _decode_int16(payload: bytes, nsamples: int) -> list[int]:
+    """Decode int16 samples from payload bytes."""
     count = len(payload) // 2
     values = list(struct.unpack("<" + "h" * count, payload[: count * 2]))
     return values[:nsamples]
 
 
 def _decode_int32(payload: bytes, nsamples: int) -> list[int]:
+    """Decode int32 samples from payload bytes."""
     count = len(payload) // 4
     values = list(struct.unpack("<" + "i" * count, payload[: count * 4]))
     return values[:nsamples]
 
 
 def _decode_float32(payload: bytes, nsamples: int) -> list[float]:
+    """Decode float32 samples from payload bytes."""
     count = len(payload) // 4
     values = list(struct.unpack("<" + "f" * count, payload[: count * 4]))
     return values[:nsamples]
 
 
 def _decode_float64(payload: bytes, nsamples: int) -> list[float]:
+    """Decode float64 samples from payload bytes."""
     count = len(payload) // 8
     values = list(struct.unpack("<" + "d" * count, payload[: count * 8]))
     return values[:nsamples]
 
 
 def _decode_steim1(payload: bytes, nsamples: int) -> list[int]:
+    """Decode Steim-1 payload bytes into samples."""
     if len(payload) % 64 != 0:
         raise ValueError("Steim1 payload length must be a multiple of 64 bytes")
     words = struct.unpack(">" + "I" * (len(payload) // 4), payload)
@@ -606,6 +639,7 @@ def _decode_steim1(payload: bytes, nsamples: int) -> list[int]:
 
 
 def _decode_steim2(payload: bytes, nsamples: int) -> list[int]:
+    """Decode Steim-2 payload bytes into samples."""
     if len(payload) % 64 != 0:
         raise ValueError("Steim2 payload length must be a multiple of 64 bytes")
     words = struct.unpack(">" + "I" * (len(payload) // 4), payload)
@@ -658,6 +692,7 @@ def _decode_steim2(payload: bytes, nsamples: int) -> list[int]:
 
 
 def _integrate_differences(x0: int, diffs: Iterable[int], nsamples: int) -> list[int]:
+    """Integrate difference values into sample values."""
     diffs_list = list(diffs)
     if not diffs_list:
         return [x0] if nsamples else []
@@ -683,9 +718,11 @@ def _integrate_differences(x0: int, diffs: Iterable[int], nsamples: int) -> list
 
 
 def _sign_extend(value: int, bits: int) -> int:
+    """Sign-extend a value with the given bit width."""
     sign_bit = 1 << (bits - 1)
     return value - (1 << bits) if value & sign_bit else value
 
 
 def main() -> None:
+    """Print a short usage hint for the CLI entrypoint."""
     print("Use parse_file(path) to parse miniSEED data.")
